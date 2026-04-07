@@ -1,2 +1,13 @@
-# skills
-skills tools
+# UI 规范技能包 (ui-spec)
+
+## 简介
+提供前端 UI 开发的统一规范、代码模板及最佳实践。
+
+## 目录结构
+本技能包包含以下核心文件：
+
+```text
+skills/
+└── ui-spec/    # 北斗项目前端UI标准skill定义  
+    ├── SKILL.md    # 技能主配置文件（定义触发规则、执行逻辑）
+    └── README.md   # 说明文档（本文档）
