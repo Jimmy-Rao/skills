@@ -6,13 +6,12 @@
 
 ## 这是什么？
 
-`ui-spec` 是一个 GitHub Copilot / AI Agent 技能文件，配置在项目 `SKILL.md` 中。当你在 VS Code 中使用 AI 助手生成或修改前端页面时，它会自动加载这套规范，确保 AI 输出的代码与项目现有风格保持一致。
+`ui-spec` 是一个 AI Agent 技能文件，配置在项目 `SKILL.md` 中。当你在 VS Code 或其他工具中使用 AI 助手生成或修改前端页面时，它会自动加载这套规范，确保 AI 输出的代码与项目现有风格保持一致。
 
 ## 解决什么问题？
 
 | 问题 | 解决方式 |
 |------|----------|
-
 | AI 生成的代码风格不统一 | 技能文件定义了固定的页面结构、组件选型、命名规范 |
 | 新人不熟悉项目组件封装 | AI 自动使用 `ResizableTable`、`addDrawer()`、`useRenderIcon()` 等项目封装 |
 | 重复沟通"用哪个组件" | 技能文件内置了组件选型决策表，AI 直接遵循 |
@@ -22,12 +21,12 @@
 
 ### 前置条件
 
-- VS Code + GitHub Copilot Chat 扩展
+- VS Code或其他工具 + GitHub Copilot Chat / claude / Codex 扩展
 - 技能文件已放置在 `SKILL.md`
 
 ### 使用方式
 
-在 Copilot Chat 中直接用自然语言描述需求即可，技能会自动生效：
+在 AI Chat 中直接用自然语言描述需求即可，技能会自动生效：
 
 ```text
 # 示例 1：创建新页面
