@@ -1,503 +1,165 @@
 ---
 name: ui-spec
-description: Create production-grade frontend pages and components for the Beidou Analytics Platform. Use this skill when asked to build or modify Vue pages, components, dialogs, tables, forms, or any UI in this project. Generates consistent, high-quality code that follows the project's established patterns and design system.
-applyTo: "d:/Work/beidou-frontend/**"
+description: 为北斗数据中台前端创建生产级页面和组件。当用户需要构建或修改 Vue 页面、组件、弹窗、表格、表单或任何 UI 时使用此技能。生成符合项目现有模式和设计规范的高质量代码。
 ---
 
-This skill guides the creation of front-end UI code for the **Beidou Analytics Platform** — a data analytics SaaS built with Vue 3 + TypeScript + Element Plus + vxe-table. Code must be consistent with the existing codebase, follow established project conventions, and maintain high design quality within the constraints of the design system.
+## 概述
 
----
-
-## 1. Technology Stack (MANDATORY)
-
-| Layer            | Library / Version                                                                 |
-| ---------------- | --------------------------------------------------------------------------------- |
-| Framework        | Vue 3.5 — Composition API (`<script setup lang="ts">`)                            |
-| Language         | TypeScript (strict)                                                               |
-| Build            | Vite 7                                                                            |
-| UI Components    | **Element Plus 2.13** — primary widget library                                    |
-| Data Grids       | **vxe-table 4.16** / **`ResizableTable`** wrapper (preferred for all data tables) |
-| State            | Pinia 3 — `useXxxStoreHook()` pattern                                             |
-| HTTP             | `@/utils/http` (`http.request<T>`) — NEVER use raw axios                          |
-| Styling          | TailwindCSS 4 utility classes + SCSS with project CSS variables                   |
-| Icons            | Iconify via `useRenderIcon()` from `@/components/ReIcon/src/hooks`                |
-| Date             | dayjs                                                                             |
-| Charts           | ECharts 6 (imported selectively from `@/plugins/echarts`)                         |
-| Debounce / utils | `@pureadmin/utils`                                                                |
+本技能规范**北斗数据中台**前端 UI 开发（Vue 3 + TypeScript + Element Plus + vxe-table）。
+文件只定义**工作流程**和**规则**，所有具体代码模板均存放在配套文件中——直接读取文件，不要凭记忆编写。
 
 ---
 
-## 2. File & Code Structure Conventions
+## 模板与代码片段文件
 
-### Page Files
+生成代码前，先读取对应的参考文件。
 
-Every page lives at `src/views/<module>/<pageName>/index.vue` and delegates business logic to a co-located `hook.ts`:
-
-```
-src/views/analyze/myPage/
-  index.vue      ← template + wire-up only
-  hook.ts        ← all state, API calls, gridOptions, computed
-  components/    ← page-local components if needed
-```
-
-### Script Block
-
-```vue
-<script setup lang="ts">
-import useHook from "./hook";
-import { useRenderIcon } from "@/components/ReIcon/src/hooks";
-// ... other imports
-
-defineOptions({ name: "MyPageName" });
-const props = defineProps<{ query?: SomeType }>(); // if needed
-
-const { form, loading, gridOptions, gridEvents, onSearch /* ...other exports */ } = useHook(props);
-</script>
-```
-
-### Hook Pattern (`hook.ts`)
-
-```typescript
-import { ref, reactive, computed, onMounted } from "vue";
-import { debounce } from "@pureadmin/utils";
-import { message } from "@/utils/message";
-import { http } from "@/utils/http";
-import type { VxeGridProps, VxeGridListeners } from "vxe-table";
-
-export default function useMyPageHook(props?: any) {
-  const loading = ref(false);
-  const dataList = ref<any[]>([]);
-
-  const form = reactive({
-    pageIndex: 1,
-    pageSize: 50
-    // ... domain fields
-  });
-
-  const gridOptions = computed<VxeGridProps>(() => ({
-    data: dataList.value,
-    columns: [
-      { field: "id", title: "ID", width: 80 }
-      // ...
-    ],
-    pagerConfig: {
-      currentPage: form.pageIndex,
-      pageSize: form.pageSize,
-      total: total.value
-    }
-  }));
-
-  const gridEvents: VxeGridListeners = {
-    pageChange({ currentPage, pageSize }) {
-      form.pageIndex = currentPage;
-      form.pageSize = pageSize;
-      onSearch();
-    }
-  };
-
-  async function onSearch() {
-    loading.value = true;
-    try {
-      const res = await http.request<any>("get", "/api/route", { params: form });
-      dataList.value = res.data ?? [];
-    } catch {
-      message("查询失败", { type: "error" });
-    } finally {
-      loading.value = false;
-    }
-  }
-
-  onMounted(onSearch);
-
-  return { form, loading, gridOptions, gridEvents, onSearch };
-}
-```
+| 任务                                   | 需读取的文件                                      |
+| -------------------------------------- | ------------------------------------------------- |
+| 新建列表 / CRUD 页面（`index.vue`）    | `.github/skills/ui-spec/templates/list-page.vue`  |
+| Hook 逻辑（`hook.ts`）                 | `.github/skills/ui-spec/templates/hook.ts`        |
+| vxe-table `gridOptions` + `gridEvents` | `.github/skills/ui-spec/snippets/grid-options.ts` |
+| 弹窗 / 抽屉 / 删除确认                 | `.github/skills/ui-spec/snippets/add-dialog.ts`   |
+| 表单控件（输入框、下拉、日期等）       | `.github/skills/ui-spec/snippets/form-items.vue`  |
+| 图标导入与 ID 速查                     | `.github/skills/ui-spec/snippets/icons.ts`        |
 
 ---
 
-## 3. Page Template Structure (MANDATORY Layout)
+## 工作流程（按顺序执行）
 
-Every analytical/list page follows this exact three-zone structure:
-
-```vue
-<template>
-  <!-- Zone 1: Title bar -->
-  <div v-loading="loading" class="main">
-    <el-row class="title-container bg-bg_color p-2">
-      <el-row class="font-bold text-2xl">页面标题</el-row>
-      <el-row class="flex flex-grow justify-end gap-2 items-center">
-        <!-- Update time, refresh button, etc. -->
-      </el-row>
-    </el-row>
-
-    <!-- Zone 2: Search / filter form -->
-    <el-row class="form-container">
-      <el-form
-        ref="formRef"
-        :inline="false"
-        :model="form"
-        label-position="left"
-        label-width="80px"
-        size="default"
-        class="search-form w-full"
-      >
-        <!-- form items -->
-        <el-form-item>
-          <el-button type="primary" :icon="useRenderIcon('ri:search-line')" :loading="loading" @click="handleSearch"
-            >搜索</el-button
-          >
-        </el-form-item>
-      </el-form>
-    </el-row>
-  </div>
-
-  <!-- Zone 3: Data table (outside .main for full-width/height) -->
-  <div v-enhanced-loading="loadingConfig" class="table-container mt-2">
-    <ResizableTable ref="resizableTableRef" :grid-options="gridOptions" :grid-events="gridEvents">
-      <template #toolbarButtons>
-        <el-row class="font-bold !px-2 !text-black !text-base">数据表格</el-row>
-      </template>
-      <template #tools>
-        <!-- Download, column-picker, etc. -->
-      </template>
-      <template #empty>
-        <ReEmpty description="暂无数据" />
-      </template>
-    </ResizableTable>
-  </div>
-</template>
-```
+1. **判断页面类型** — 列表/CRUD 页、带图表的分析页，还是纯表单组件。
+2. **读取模板文件** — 根据上方表格决定需要读哪些文件。
+3. **规划要创建的文件** — 最少需要 `index.vue` + `hook.ts`；如果有新增/编辑弹窗，再加 `form.vue`。
+4. **生成代码** — 以模板为基础，替换所有 `MyPage` / `MyItem` / `/api/my-resource` 占位符。
+5. **检查反模式** — 对照底部的禁止清单逐条核验。
+6. **注册路由** — 如果是新页面，在 `src/router/modules/<module>.ts` 中添加路由配置。
 
 ---
 
-## 4. Table Rules
+## 一、技术栈（强制）
 
-### Use `ResizableTable` for ALL analytical data tables
-
-**Import:** `import ResizableTable from "@/views/analyze/eventAnalyze/components/ResizableTable/index.vue"`
-
-**Props:**
-| Prop | Type | Default | Notes |
-|---|---|---|---|
-| `gridOptions` | `VxeGridProps` | required | Pass from hook's computed |
-| `gridEvents` | `VxeGridListeners` | — | Pagination, sort, filter events |
-| `resizable` | `boolean` | `true` | User drag-to-resize height |
-| `autoHeight` | `boolean` | `true` | Viewport-based auto height |
-| `minHeight` | `number` | `300` | px |
-| `maxHeight` | `number` | `1200` | px |
-
-**Slots:**
-
-- `#toolbarButtons` — left toolbar content (title, buttons)
-- `#tools` — right toolbar (download, column picker)
-- `#empty` — always use `<ReEmpty description="暂无数据" />`
-
-**Standard `gridOptions` shape (define in hook.ts):**
-
-```typescript
-const gridOptions = computed<VxeGridProps>(() => ({
-  data: dataList.value,
-  loading: loading.value,
-  columns: [...],
-  pagerConfig: {
-    currentPage: form.pageIndex,
-    pageSize: form.pageSize,
-    total: total.value,
-    layouts: ["PrevPage", "Number", "NextPage", "Sizes", "Total"],
-    pageSizes: [30, 50, 100],
-  },
-  // Enable virtual scrolling for large data sets
-  virtualYConfig: { enabled: true, gt: 50 },
-}))
-```
-
-### NEVER use bare `<el-table>` for new pages. Always use ResizableTable or pure-table.
+| 层级      | 库 / 版本                                          |
+| --------- | -------------------------------------------------- |
+| 框架      | Vue 3.5 — `<script setup lang="ts">`               |
+| 语言      | TypeScript strict 模式                             |
+| UI 组件库 | Element Plus 2.13                                  |
+| 数据表格  | vxe-table 4.16，统一通过 `ResizableTable` 封装使用 |
+| 状态管理  | Pinia 3 — `useXxxStoreHook()` 模式                 |
+| HTTP 请求 | `@/utils/http` — `http.request<T>()`               |
+| 样式      | TailwindCSS 4 + SCSS + 项目 CSS 变量               |
+| 图标      | Iconify，通过 `useRenderIcon()` 使用               |
+| 图表      | ECharts 6，从 `@/plugins/echarts` 按需导入         |
+| 工具函数  | `@pureadmin/utils`（debounce、cloneDeep 等）       |
 
 ---
 
-## 5. Icon Usage (MANDATORY)
+## 二、文件目录结构
 
-Always use `useRenderIcon()`. Never use raw `<el-icon>` or HTML entities.
-
-```typescript
-import { useRenderIcon } from "@/components/ReIcon/src/hooks";
-// Named import for static icons:
-import Refresh from "@iconify-icons/ep/refresh";
-import Delete from "@iconify-icons/ep/delete";
-import Edit from "@iconify-icons/ep/edit";
-import Search from "@iconify-icons/ri/search-line";
+```
+src/views/<模块>/<页面名>/
+  index.vue      ← 仅写模板和参数传递，不写业务逻辑
+  hook.ts        ← 所有状态、API 调用、gridOptions、computed
+  form.vue       ← 在 addDialog/addDrawer 中渲染的表单组件
+  components/    ← 页面级私有组件（按需创建）
 ```
 
-```vue
-<!-- In template -->
-<el-button :icon="useRenderIcon(Refresh)" />
-<el-button :icon="useRenderIcon('ri:search-line')" />
-<el-button :icon="useRenderIcon('ep:plus')" />
-```
-
-Common icon IDs: `ep:refresh`, `ep:delete`, `ep:edit`, `ep:plus`, `ep:circle-plus`, `ep:download`, `ri:search-line`, `ri:download-2-line`, `ri:filter-line`.
+每个 `index.vue` 必须包含 `defineOptions({ name: "大驼峰页面名" })`。
 
 ---
 
-## 6. Dialog & Drawer Rules
+## 三、页面三区布局
 
-### Dialogs — use `addDialog()` / DO NOT use `<el-dialog>` directly
+所有列表 / 分析页严格按以下三个区域的顺序布局：
 
-```typescript
-import { addDialog } from "@/components/ReDialog";
-import type { FormInstance } from "element-plus";
+| 区域       | CSS 类                                    | 内容                                      |
+| ---------- | ----------------------------------------- | ----------------------------------------- |
+| ① 标题栏   | `title-container bg-bg_color p-2`         | 左：页面标题；右：刷新按钮 / 数据更新时间 |
+| ② 搜索表单 | `form-container` + `v-loading`            | `<el-form>` 搜索条件 + 操作按钮           |
+| ③ 数据表格 | `table-container mt-2`（位于 `.main` 外） | `<ResizableTable>`                        |
 
-// Open a dialog
-addDialog({
-  title: "新增数据",
-  width: "580px",
-  draggable: true,
-  fullscreenIcon: true,
-  closeOnClickModal: false,
-  contentRenderer: () => h(MyFormComponent, { ref: formRef, formData: row }),
-  beforeSure(done, { options }) {
-    const formEl = formRef.value?.formRef as FormInstance;
-    formEl?.validate(valid => {
-      if (valid) {
-        submitData().then(() => done());
-      }
-    });
-  }
-});
-```
+`ResizableTable` 导入路径：`@/views/analyze/eventAnalyze/components/ResizableTable/index.vue`
 
-### Drawers — use `addDrawer()` for side panels
-
-Same API as `addDialog()` with additional `direction` prop (`"rtl"` default).
-
-### NEVER use `<el-dialog>` or `<el-drawer>` in new pages. Always use the `addDialog`/`addDrawer` programmatic API.
+插槽说明：`#toolbarButtons`（左侧标题）、`#tools`（右侧操作）、`#empty` → 固定使用 `<ReEmpty description="暂无数据" />`。
 
 ---
 
-## 7. Form Conventions
+## 四、核心规则（不可违反）
 
-```vue
-<el-form ref="formRef" :model="form" :rules="rules" label-position="left" label-width="80px" size="default" status-icon>
-  <!-- Text input -->
-  <el-form-item label="名称" prop="name">
-    <el-input v-model="form.name" placeholder="请输入名称" clearable />
-  </el-form-item>
+### 组件选型
 
-  <!-- Select with search -->
-  <el-form-item label="类型" prop="type">
-    <el-select
-      v-model="form.type"
-      filterable
-      clearable
-      class="!w-[200px]"
-      placeholder="请选择"
-    >
-      <el-option v-for="item in options" :key="item.value" :label="item.label" :value="item.value" />
-    </el-select>
-  </el-form-item>
+- 数据表格 → `ResizableTable` + `VxeGridProps`（禁止裸用 `<el-table>`）
+- 弹窗 → `addDialog()`（`@/components/ReDialog`，禁止 `<el-dialog>`）
+- 侧边抽屉 → `addDrawer()`（`@/components/ReDrawer`，禁止 `<el-drawer>`）
+- 空状态 → `<ReEmpty description="暂无数据" />`
+- 图标 → 只用 `useRenderIcon()`（禁止 `<el-icon>`、emoji、`el-icon-*` 类名）
 
-  <!-- Multi-select -->
-  <el-form-item label="属性" prop="attrs">
-    <el-select
-      v-model="form.attrs"
-      multiple
-      filterable
-      collapse-tags
-      :max-collapse-tags="1"
-      class="!w-[220px]"
-    />
-  </el-form-item>
+### HTTP 与消息
 
-  <!-- Date range -->
-  <el-form-item label="日期范围" prop="dateRange">
-    <el-date-picker
-      v-model="form.dateRange"
-      type="daterange"
-      range-separator="~"
-      start-placeholder="开始日期"
-      end-placeholder="结束日期"
-      value-format="YYYY-MM-DD"
-    />
-  </el-form-item>
+- HTTP 请求 → `http.request<T>()` from `@/utils/http`（禁止直接用 axios）
+- 提示消息 → `message()` from `@/utils/message`（禁止直接用 `ElMessage`）
 
-  <!-- Action row -->
-  <el-form-item>
-    <el-button type="primary" :icon="useRenderIcon('ri:search-line')" :loading="loading" @click="handleSearch">
-      搜索
-    </el-button>
-    <el-button :icon="useRenderIcon(Refresh)" @click="resetForm(formRef)">重置</el-button>
-  </el-form-item>
-</el-form>
-```
+### 表单
 
-**Rules:**
+- 所有表单必须设置 `label-position="left"` 及明确的 `label-width`
+- 尺寸统一使用 `size="default"`（禁止 `size="large"`）
+- 所有 `<el-input>` / `<el-select>` 必须加 `clearable`
+- 超过约 5 个选项的 `<el-select>` 必须加 `filterable`
+- 宽度通过 Tailwind 控制：`class="!w-[200px]"`
 
-- `label-position="left"` and explicit `label-width` on all forms
-- Use `size="default"` consistently (never `"large"`)
-- `clearable` on all inputs/selects
-- `filterable` on all selects with more than ~5 options
-- Width constraints via Tailwind: `class="!w-[200px]"`
+### 样式
 
----
+- 布局间距 → Tailwind 工具类
+- 主题色 → 项目 CSS 变量（`bg-bg_color`、`text-text_color_primary` 等）
+- 组件样式覆盖 → `<style scoped lang="scss">` + `:deep()`
+- **禁止**用 `style=""` 写布局；**禁止**硬编码十六进制颜色值
 
-## 8. Loading States
+### 交互质量
 
-Two loading patterns — use each in the right context:
+- 所有异步操作 → 必须有 loading 状态
+- 所有接口报错 → 必须显示 `message("…", { type: "error" })` 提示
+- 所有空数据状态 → 必须渲染 `<ReEmpty />`
+- 纯图标按钮 → 必须加 `v-tippy="{ content: '刷新', placement: 'bottom-start', zIndex: 41000 }"`
+- 表格列 → 必须设置 `width` 或 `min-width`；文本列加 `showOverflow`
+- 按钮语义：`type="primary"`（主操作）、`type="danger"`（破坏性操作）、default（次要操作）；相邻两个按钮不能同为 `primary`
 
-```vue
-<!-- Zone 1+2 (header + form): v-loading from Element Plus -->
-<div v-loading="loading" class="main"></div>
-```
-
-`loadingConfig` shape (from hook):
-
-```typescript
-const loadingConfig = reactive({
-  loading: false,
-  text: "数据加载中...",
-  svg: `<path .../>` // optional custom spinner SVG
-});
-```
-
----
-
-## 9. CSS / Styling Rules
-
-### Class Naming Priority
-
-1. **Tailwind utility classes** for spacing, flex, text sizes, colors
-2. **Project CSS variables** for theme colors (`bg-bg_color`, `text-text_color_primary`)
-3. **SCSS scoped** only for component-specific structural overrides
-4. **NEVER** write inline `style=""` for layout properties
-
-### Key CSS Variable Tokens
-
-```scss
-// Backgrounds
-bg-bg_color          // page background
-bg-bg_color_overlay  // card / panel background
-
-// Text
-text-text_color_primary   // main text
-text-text_color_regular   // secondary text
-text-text_color_secondary // tertiary / hint
-
-// Borders
-border-border_color_light
-border-border_color
-
-// Primary brand
-text-primary  bg-primary  // Element Plus primary blue
-```
-
-### Common Class Patterns
-
-```vue
-<!-- Page title -->
-<el-row class="font-bold text-2xl"></el-row>
-```
-
-### SCSS Scoped — only for Element Plus deep overrides
-
-```scss
-<style scoped lang="scss">
-:deep(.el-table) {
-  .el-table__expand-icon { display: none; }
-}
-:deep(.el-form-item) {
-  &.special-formItem .el-form-item__content {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-</style>
-```
-
----
-
-## 10. Notification & Messages
-
-```typescript
-import { message } from "@/utils/message";
-import { ElMessageBox } from "element-plus";
-
-// Toasts
-message("操作成功", { type: "success" });
-message("请检查输入", { type: "warning" });
-message("操作失败", { type: "error" });
-
-// Confirmation dialog
-ElMessageBox.confirm("确认删除该记录？", "提示", {
-  confirmButtonText: "确认",
-  cancelButtonText: "取消",
-  type: "warning"
-}).then(() => {
-  /* proceed */
-});
-```
-
----
-
-## 11. Permissions & Auth
-
-Use the `v-auth` directive for permission-gated UI:
+### 权限控制
 
 ```vue
 <el-button v-auth="'sys:user:add'" type="primary">新增</el-button>
-<el-button v-auth="'sys:user:delete'" type="danger">删除</el-button>
 ```
 
-Use `hasAuth()` in script logic:
-
-```typescript
+```ts
 import { hasAuth } from "@/utils/auth";
 const canEdit = hasAuth("sys:user:edit");
 ```
 
 ---
 
-## 12. Component Quick Reference
+## 五、常用组件速查
 
-| Need                     | Component / API                                     |
-| ------------------------ | --------------------------------------------------- |
-| Data table (analytics)   | `ResizableTable` + `VxeGridProps`                   |
-| Modal dialog             | `addDialog()` from `@/components/ReDialog`          |
-| Side panel               | `addDrawer()` from `@/components/ReDrawer`          |
-| Empty state              | `<ReEmpty description="暂无数据" />`                |
-| Icon button              | `<el-button :icon="useRenderIcon('ep:edit')" />`    |
-| Truncated text + tooltip | `<ReText :line-clamp="1">content</ReText>`          |
-| Animated counter         | `<ReCountTo :start-val="0" :end-val="count" />`     |
-| Org tree selector        | `<ReOrganizationTreeSelect v-model="form.orgId" />` |
-| Permission gate          | `v-auth="'permission:code'"` directive              |
-| Toast message            | `message("msg", { type: "success" })`               |
-| Success/error feedback   | `message()` from `@/utils/message`                  |
-| Chart                    | `import * as echarts from "@/plugins/echarts"`      |
+| 需求               | 组件 / API                                          |
+| ------------------ | --------------------------------------------------- |
+| 数据表格           | `ResizableTable` + `VxeGridProps`                   |
+| 弹窗               | `addDialog()` — `@/components/ReDialog`             |
+| 侧边抽屉           | `addDrawer()` — `@/components/ReDrawer`             |
+| 空状态             | `<ReEmpty description="暂无数据" />`                |
+| 文本截断 + tooltip | `<ReText :line-clamp="1">`                          |
+| 数字动画           | `<ReCountTo :start-val="0" :end-val="n" />`         |
+| 组织树选择         | `<ReOrganizationTreeSelect v-model="form.orgId" />` |
+| 权限控制           | `v-auth="'permission:code'"`                        |
+| 图表               | `import * as echarts from "@/plugins/echarts"`      |
 
 ---
 
-## 13. Design Quality Within System Constraints
+## 六、禁止清单（绝对不能做）
 
-While the tech stack and component library are fixed, design quality still matters:
-
-- **Spacing & Density**: Use consistent spacing tokens. Prefer `gap-2` / `gap-4` for flex rows, `p-2` / `p-4` for containers. Avoid cramped layouts.
-- **Typography Hierarchy**: Page titles `text-2xl font-bold`, section headers `text-lg font-bold` / `font-semibold`, body `text-sm` or `text-base`. Never use arbitrary sizes.
-- **Color Discipline**: Use semantic CSS variables (`text-text_color_primary`, `bg-bg_color`) instead of hard-coded hex values. Use Element Plus `type` props (`type="primary"`, `type="success"`, etc.) for semantic color.
-- **Feedback & Loading**: Every async action must show a loading state. Every error must show a `message()` toast. Every empty result must render `<ReEmpty />`.
-- **Button Grouping**: Primary action = `type="primary"`. Destructive = `type="danger"`. Secondary = `type="default"`. Reset/cancel = plain or `link` type. Never put two `type="primary"` buttons side by side.
-- **Table Columns**: Always set explicit `width` or `min-width` on columns. Use `showOverflow` tooltip for text that might truncate. Fixed key columns left/right when table scrolls.
-- **Tooltips**: Use `v-tippy` for icon-only buttons: `v-tippy="{ content: '刷新', placement: 'bottom-start', zIndex: 41000 }"`.
-
----
-
-## 14. Anti-Patterns (NEVER DO)
-
-- ❌ Raw `<el-table>` for new pages — use `ResizableTable` or `pure-table`
-- ❌ `<el-dialog>` / `<el-drawer>` inline in templates — use `addDialog()` / `addDrawer()`
-- ❌ Direct `axios` calls — always use `http.request()` from `@/utils/http`
-- ❌ Inline styles for layout (`style="margin-top: 12px"`) — use Tailwind
-- ❌ Hard-coded color hex values in templates or scoped CSS
-- ❌ Business logic in `index.vue` — keep it in `hook.ts`
-- ❌ `import { ElMessage } from 'element-plus'` for toasts — use `@/utils/message`
-- ❌ `<i class="el-icon-*">` or raw emoji as icons — use `useRenderIcon()`
-- ❌ `size="large"` on form controls — use `size="default"`
-- ❌ Skipping `defineOptions({ name: "..." })` on page components
+- ❌ 使用 `<el-table>` — 改用 `ResizableTable`
+- ❌ 在模板中写 `<el-dialog>` / `<el-drawer>` — 改用 `addDialog()` / `addDrawer()`
+- ❌ 直接使用 `axios` — 改用 `http.request()`
+- ❌ `import { ElMessage }` — 改用 `@/utils/message`
+- ❌ 使用 `<el-icon>` 或 `el-icon-*` 类名 — 改用 `useRenderIcon()`
+- ❌ 用 `style=""` 写布局样式 — 改用 Tailwind
+- ❌ 硬编码十六进制颜色值 — 改用 CSS 变量 token
+- ❌ 在 `index.vue` 中写业务逻辑 — 移到 `hook.ts`
+- ❌ 表单控件使用 `size="large"` — 统一用 `size="default"`
+- ❌ `index.vue` 缺少 `defineOptions({ name: "…" })`
